@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Text summarizer</title>
+<style>
+  :root {
+    --paper: #f7f5f0;
+    --ink: #1c1b19;
+    --muted: #55524b;
+    --line: #d8d3c8;
+    --accent: #2f5d50;
+    --field: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #191a18;
+      --ink: #ecebe6;
+      --muted: #b4b1a8;
+      --line: #3a3b37;
+      --accent: #8cc4b2;
+      --field: #222320;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 17px/1.55 Georgia, "Iowan Old Style", "Times New Roman", serif;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 40px 16px 64px; }
+  h1 { font-size: 30px; margin: 0 0 4px; font-weight: normal; }
+  .lead { color: var(--muted); margin: 0 0 28px; }
+  label, .meta, button, select, input { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 14px; }
+  textarea {
+    width: 100%; min-height: 220px; padding: 12px;
+    background: var(--field); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 3px;
+    font: inherit; resize: vertical;
+  }
+  .controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; margin: 16px 0 28px; }
+  .controls div { display: flex; flex-direction: column; gap: 4px; }
+  select, input {
+    padding: 6px 8px; background: var(--field); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 3px;
+  }
+  input[type=number] { width: 80px; }
+  button {
+    padding: 8px 18px; border: 1px solid var(--accent); border-radius: 3px;
+    background: var(--accent); color: var(--paper); cursor: pointer;
+  }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #result { border-top: 1px solid var(--line); padding-top: 20px; }
+  #result ol { padding-left: 22px; }
+  #result li { margin-bottom: 10px; }
+  .meta { color: var(--muted); }
+  .error { color: #a3352b; }
+  @media (prefers-color-scheme: dark) { .error { color: #f08a7e; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Text summarizer</h1>
+  <p class="lead">Paste a German or English text. The summarizer picks its most important sentences.</p>
+
+  <form id="form">
+    <label for="text">Text</label>
+    <textarea id="text" required></textarea>
+
+    <div class="controls">
+      <div>
+        <label for="sentences">Sentences</label>
+        <input id="sentences" type="number" min="1" max="200" value="3">
+      </div>
+      <div>
+        <label for="method">Method</label>
+        <select id="method">
+          <option value="textrank">TextRank</option>
+          <option value="frequency">Word frequency</option>
+        </select>
+      </div>
+      <div>
+        <label for="lang">Language</label>
+        <select id="lang">
+          <option value="auto">Detect</option>
+          <option value="de">German</option>
+          <option value="en">English</option>
+        </select>
+      </div>
+      <button type="submit">Summarize</button>
+    </div>
+  </form>
+
+  <section id="result" aria-live="polite" hidden></section>
+</main>
+
+<script>
+  const form = document.getElementById('form');
+  const result = document.getElementById('result');
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const params = new URLSearchParams({
+      sentences: document.getElementById('sentences').value,
+      method: document.getElementById('method').value,
+      lang: document.getElementById('lang').value,
+      keywords: 6
+    });
+    result.hidden = false;
+    result.textContent = 'Working...';
+    try {
+      const response = await fetch('/api/summarize?' + params, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        body: document.getElementById('text').value
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        show([element('p', data.error, 'error')]);
+        return;
+      }
+      const list = document.createElement('ol');
+      data.sentences.forEach(s => list.appendChild(element('li', s.text)));
+      const s = data.stats;
+      show([
+        list,
+        element('p', 'Keywords: ' + data.keywords.map(k => k.word).join(', '), 'meta'),
+        element('p', s.summarySentences + ' of ' + s.originalSentences + ' sentences, '
+          + s.summaryWords + ' of ' + s.originalWords + ' words ('
+          + Math.round(s.compression * 100) + '%), language ' + data.language + ', method ' + data.method, 'meta')
+      ]);
+    } catch (e) {
+      show([element('p', 'Could not reach the server.', 'error')]);
+    }
+  });
+
+  function element(tag, text, className) {
+    const node = document.createElement(tag);
+    node.textContent = text;
+    if (className) node.className = className;
+    return node;
+  }
+
+  function show(nodes) {
+    result.replaceChildren(...nodes);
+  }
+</script>
+</body>
+</html>
